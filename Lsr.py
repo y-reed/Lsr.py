@@ -6,7 +6,7 @@ import pickle
 import threading
 
 UPDATE_INTERVAL = 1
-ROUTE_UPDATE_INTERVAL = 0.1
+ROUTE_UPDATE_INTERVAL = 0.5
 
 
 class Packet:
@@ -14,7 +14,8 @@ class Packet:
          self.type = type
          self.original_router = o_router
          self.neighbours_dict = neighbours_dict
-         self.seq_num = seq_num,
+         self.seq_num = seq_num
+
          # self.router_state = router_state
          # self.send_time = 0
 class Router:
@@ -49,11 +50,12 @@ class Router:
     def get_neighbours(self):
         return self.neighbours.keys()
 
+    def remove_edge(self, dest):
+        del self.neighbours[dest]
 
 class Graph:
     def __init__(self):
         self.routers = []
-        self.edges = {}
 
     def add_router(self, router):
         if router not in self.routers:
@@ -64,14 +66,15 @@ class Graph:
             if (n.name == r.name):
                 return n
 
+    def get_router_by_name(self, r):
+        for n in self.routers:
+            if (n.name == r):
+                return n
+
     def add_edge(self, r1, r2, w):
         if r1 in self.routers and r2 in self.routers:
             self.get_router(r1).add_neighbour(r2, w)
             self.get_router(r2).add_neighbour(r1, w)
-
-    def get_edge(self, r):
-        return self.edges[self.edges.index(r)]
-
 
     def adjacent(self, r1, r2):
         if r1 in get_router(self,r).neighbours:
@@ -83,7 +86,9 @@ class Graph:
         return True
 
     def remove_edge(self,r1,r2):
-        ##To do
+        self.get_router(r1).remove_edge(r2)
+        self.get_router(r2).remove_edge(r1)
+
         return True
 
 def store_path(src, dest, prev, dist):
@@ -147,15 +152,15 @@ def send_broadcast(src_router):
         for n in src_router.neighbours:
             sender_sock.sendto(pickle.dumps(LSA_Packet), ("localhost", n.port))
         seq_num += 1
-        time.sleep(0.3)
+        time.sleep(ROUTE_UPDATE_INTERVAL)
 
 def receive_packets():
     recved_packet = []
     while True:
         recv_data, addr = sender_sock.recvfrom(4048)
         recv_packet = pickle.loads(recv_data)
-        print("receive from" + recv_packet.original_router.name)
-        if recv_packet.seq_num not in recved_packet:
+        # print("receive from" + recv_packet.original_router.name)
+        if recv_packet.original_router not in recved_packet:
             if recv_packet.type == "LSA_Packet":
                 for n in recv_packet.neighbours_dict:
                     if n.name == src_router.name:
@@ -165,22 +170,19 @@ def receive_packets():
                         g.add_router(r)
                         g.add_edge(g.get_router(recv_packet.original_router), r, recv_packet.neighbours_dict[n])
                     else:
-                        print("else" + n.name)
                         g.add_edge(g.get_router(recv_packet.original_router), g.get_router(n), recv_packet.neighbours_dict[n])
-                        # for i in n.neighbours:
-                        #     print(i.name)
                 for i in src_router.neighbours:
                     if recv_packet.original_router.name == i.name:
                         continue
                     sender_sock.sendto(pickle.dumps(recv_packet), ("localhost", i.port))
-                print("graphs")
-                for r in g.routers:
-                    print("router " + r.name + " connected to:")
-                    for n in r.neighbours:
-                        print(n.name)
+                # print("graphs")
+                # for r in g.routers:
+                #     print("router " + r.name + " connected to:")
+                #     for n in r.neighbours:
+                #         print(n.name)
             if recv_packet.type == "heart_beat":
                 continue
-            recved_packet.append(recv_packet.seq_num)
+            recved_packet.append(recv_packet.original_router)
 
 
 def heartbeat():
@@ -225,10 +227,11 @@ def main():
     while True:
         time.sleep(UPDATE_INTERVAL)
         print("I am Router", src_router.name)
-    #     dijkstra(src_router)
-        # print_path(src_router)
+        dijkstra(src_router)
+        print_path(src_router)
+        g.remove_edge(g.get_router_by_name("F"),g.get_router_by_name("A"))
 
-        # receive_packets()
+
 
 
 
