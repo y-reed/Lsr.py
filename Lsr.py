@@ -1,3 +1,5 @@
+# By Yuki Reed z5159982
+
 import sys
 import os
 import time
@@ -10,14 +12,13 @@ ROUTE_UPDATE_INTERVAL = 0.5
 
 
 class Packet:
-     def __init__(self, type, o_router, seq_num, neighbours_dict):
+     def __init__(self, type, o_router, seq_num):
          self.type = type
          self.original_router = o_router
-         self.neighbours_dict = neighbours_dict
+         self.neighbours_dict = {}
          self.seq_num = seq_num
-
          # self.router_state = router_state
-         # self.send_time = 0
+         self.send_time = 0
 class Router:
     def __init__(self, name, port):
         #Router characteristics
@@ -51,7 +52,8 @@ class Router:
         return self.neighbours.keys()
 
     def remove_edge(self, dest):
-        del self.neighbours[dest]
+        self.no_neighbours -= 1
+        self.neighbours.pop(dest)
 
 class Graph:
     def __init__(self):
@@ -81,27 +83,27 @@ class Graph:
             return True
         return False
 
-    def remove_vertex(self,r):
-        ##To do
-        return True
+    def remove_router(self,r):
+        for r1 in self.get_router(r).neighbours:
+            g.remove_edge(r1, r)
+        self.routers.remove(r)
+        del r
 
     def remove_edge(self,r1,r2):
         self.get_router(r1).remove_edge(r2)
-        self.get_router(r2).remove_edge(r1)
-
-        return True
+        # self.get_router(r2).remove_edge(r1)
+        # g.get_router(r2) = self.get_router(r1).remove_edge(r2)
+        # g.get_router(r1) = self.get_router(r2).remove_edge(r1)
 
 def store_path(src, dest, prev, dist):
     path = []
     d = dest
-    cost = 0
     while(d != src):
         path.append(d.name)
-        cost += dist[d]
         d = prev[d]
     path.append(src.name)
     path.reverse()
-    src.append_path(dest, path, cost)
+    src.append_path(dest, path, dist[dest])
 
 def dijkstra(src):
     dist = {}
@@ -125,8 +127,10 @@ def dijkstra(src):
                 dist[next] = new_dist
                 prev[next] = curr
 
+    src.paths.clear()
+    src.cost.clear()
     for router in g.routers:
-        if router != src:
+        if (router != src and dist[router] != sys.maxint):
             store_path(src, router, prev, dist)
 
 def creat_ft():
@@ -145,48 +149,51 @@ def establishConnection():
     sender_sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
     sender_sock.bind(('', src_router.port))
 
-def send_broadcast(src_router):
+def send_broadcast():
     seq_num = 0
     while True:
-        LSA_Packet = Packet("LSA_Packet", src_router, seq_num, src_router.neighbours)
+        LSA_Packet = Packet("LSA_Packet", src_router, seq_num)
+        LSA_Packet.neighbours_dict = src_router.neighbours
         for n in src_router.neighbours:
             sender_sock.sendto(pickle.dumps(LSA_Packet), ("localhost", n.port))
         seq_num += 1
+        time.sleep(UPDATE_INTERVAL)
+
+def heart_beat():
+    seq_num = 0
+    while True:
+        heart_beat_packet = Packet("heart_beat", src_router, seq_num)
+        heart_beat_packet.send_time = time.time()
+        for n in src_router.neighbours:
+            sender_sock.sendto(pickle.dumps(heart_beat_packet), ("localhost", n.port))
+        seq_num += 1
         time.sleep(ROUTE_UPDATE_INTERVAL)
+    return
 
 def receive_packets():
     recved_packet = []
     while True:
         recv_data, addr = sender_sock.recvfrom(4048)
         recv_packet = pickle.loads(recv_data)
-        # print("receive from" + recv_packet.original_router.name)
-        if recv_packet.original_router not in recved_packet:
-            if recv_packet.type == "LSA_Packet":
-                for n in recv_packet.neighbours_dict:
-                    if n.name == src_router.name:
-                        continue
-                    if not g.get_router(n):
-                        r = Router(n.name, n.port)
-                        g.add_router(r)
-                        g.add_edge(g.get_router(recv_packet.original_router), r, recv_packet.neighbours_dict[n])
-                    else:
-                        g.add_edge(g.get_router(recv_packet.original_router), g.get_router(n), recv_packet.neighbours_dict[n])
-                for i in src_router.neighbours:
-                    if recv_packet.original_router.name == i.name:
-                        continue
-                    sender_sock.sendto(pickle.dumps(recv_packet), ("localhost", i.port))
-                # print("graphs")
-                # for r in g.routers:
-                #     print("router " + r.name + " connected to:")
-                #     for n in r.neighbours:
-                #         print(n.name)
-            if recv_packet.type == "heart_beat":
-                continue
-            recved_packet.append(recv_packet.original_router)
+        # if recv_packet.original_router not in recved_packet:
+        if recv_packet.type == "LSA_Packet":
+            for n in recv_packet.neighbours_dict:
+                if n.name == src_router.name:
+                    continue
+                if not g.get_router(n):
+                    r = Router(n.name, n.port)
+                    g.add_router(r)
+                    g.add_edge(g.get_router(recv_packet.original_router), r, recv_packet.neighbours_dict[n])
+                else:
+                    g.add_edge(g.get_router(recv_packet.original_router), g.get_router(n), recv_packet.neighbours_dict[n])
+            for i in src_router.neighbours:
+                if recv_packet.original_router.name == i.name:
+                    continue
+                sender_sock.sendto(pickle.dumps(recv_packet), ("localhost", i.port))
+            # recved_packet.append(recv_packet.original_router)
+        if recv_packet.type == "heart_beat":
 
-
-def heartbeat():
-    return
+            continue
 
 def read_Config():
     configFile = open(sys.argv[1], "r")
@@ -209,7 +216,10 @@ def print_path(src_router):
     for j in g.routers:
         if j == b:
             continue
-        print(b.paths[j.name])
+        if j.name not in b.paths:
+            print("no path " + j.name)
+        else:
+            print("Least cost path to router " + j.name + ":" + ' '.join(b.paths[j.name]).replace(" ","") + " and the cost is " + str(b.cost[j.name]))
 
 g = Graph()
 
@@ -220,16 +230,21 @@ def main():
     recv_pack.daemon = True
     recv_pack.start()
 
-    broadcast = threading.Thread(target = send_broadcast, args = (src_router, ))
+    broadcast = threading.Thread(target = send_broadcast, args = ())
     broadcast.daemon = True
     broadcast.start()
 
+    heartbeat = threading.Thread(target = heart_beat, args=())
+    heartbeat.daemon = True
+    heartbeat.start()
+
+    flag = 0
     while True:
         time.sleep(UPDATE_INTERVAL)
-        print("I am Router", src_router.name)
+        print("I am Router " +  src_router.name)
         dijkstra(src_router)
         print_path(src_router)
-        g.remove_edge(g.get_router_by_name("F"),g.get_router_by_name("A"))
+
 
 
 
