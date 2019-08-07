@@ -145,7 +145,7 @@ def heart_beat_timer():
     while True:
         for r in list(src_router.neighbours):
             if r.name in latest_hb:
-                if int(time.time()) > (latest_hb[r.name] + 1.5):
+                if int(time.time()) > (latest_hb[r.name] + 2):
                     # print(str(time.time()) + "now " + str(latest_hb[r.name]))
                     print("removed" + r.name)
                     dead_nodes.append(r.name)
@@ -166,7 +166,7 @@ def receive_packets():
     store_hb = {}
     store_rv = []
     while True:
-        recv_data, addr = sender_sock.recvfrom(4048)
+        recv_data, addr = sender_sock.recvfrom(2048)
         recv_packet = pickle.loads(recv_data)
         org_router = recv_packet.original_router
         if recv_packet.type == "LSA_Packet":
@@ -184,18 +184,15 @@ def receive_packets():
 
                 if len(recv_packet.dead_nodes) != 0:
                     for d_node in recv_packet.dead_nodes:
-                        if d_node not in dead_nodes:
+                        if d_node not in dead_nodes and d_node not in src_direct_neighbours:
                             dead_nodes.append(d_node)
                             g.remove_edge(g.get_router_by_name(d_node))             ##Removes all edges connected to the failed node in the graph
-                            receive_packets()
-
                 if len(recv_packet.revive) != 0:
                     for rev in recv_packet.revive:
                         if rev in dead_nodes:
                             for r in g.get_router_by_name(rev).neighbours:
                                 g.add_edge(g.get_router_by_name(rev), g.get_router(r), g.get_router_by_name(rev).neighbours[r])
-                        dead_nodes.remove(rev)
-                    receive_packets()
+                            dead_nodes.remove(rev)
 
                 for i in list(src_router.neighbours):
                     if org_router.name == i.name:
@@ -215,7 +212,6 @@ def receive_packets():
                 for n in list(recv_packet.neighbours_dict):
                     if n.name not in dead_nodes:
                         g.add_edge(g.get_router(org_router), g.get_router(n), recv_packet.neighbours_dict[n])
-
             store_hb[org_router.name] = recv_packet.seq_num
             print("Dead" + str(dead_nodes))
             print("revive" + str(revive_nodes))
