@@ -190,11 +190,13 @@ def receive_packets():
                             receive_packets()
 
                 if len(recv_packet.revive) != 0:
-                    print("packets contain" + str(recv_packet.revive))
-                    for n in list(recv_packet.neighbours_dict):
-                        if n.name not in dead_nodes:
-                            g.add_edge(g.get_router(org_router), g.get_router(n), recv_packet.neighbours_dict[n])
-                            receive_packets()
+                    for rev in recv_packet.revive:
+                        if rev in dead_nodes:
+                            for r in g.get_router_by_name(rev).neighbours:
+                                g.add_edge(g.get_router_by_name(rev), g.get_router(r), g.get_router_by_name(rev).neighbours[r])
+                        dead_nodes.remove(rev)
+                    receive_packets()
+
                 for i in list(src_router.neighbours):
                     if org_router.name == i.name:
                         continue
@@ -205,8 +207,8 @@ def receive_packets():
             if org_router.name in store_hb:
                 if recv_packet.seq_num > store_hb[org_router.name]:
                     latest_hb[org_router.name] = recv_packet.send_time
-            print(len(dead_nodes))
-            if len(dead_nodes) != 0 and org_router.name in dead_nodes:
+
+            if (len(dead_nodes) != 0) and (org_router.name in dead_nodes):
                 print("packet from" + org_router.name)
                 dead_nodes.remove(org_router.name)
                 revive_nodes.append(org_router.name)
