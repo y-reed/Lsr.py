@@ -172,6 +172,14 @@ def receive_packets():
         if recv_packet.type == "LSA_Packet":
 
             if check_seq_num(recv_packet) == True:                                  #Checks whether or not packet has been received. Returns True if packet must be read.
+                if len(recv_packet.revive) != 0:
+                    for rev in recv_packet.revive:
+                        if rev in dead_nodes:
+                    #         for r in g.get_router_by_name(rev).neighbours:
+                    #             if r.name not in dead_nodes:
+                    #                 g.add_edge(g.get_router_by_name(rev), g.get_router(r), g.get_router_by_name(rev).neighbours[r])
+                            dead_nodes.remove(rev)
+
                 for n in recv_packet.neighbours_dict:
                     if not g.get_router(n):
                         if n.name == src_router.name:
@@ -184,15 +192,10 @@ def receive_packets():
 
                 if len(recv_packet.dead_nodes) != 0:
                     for d_node in recv_packet.dead_nodes:
-                        if d_node not in dead_nodes and d_node not in src_direct_neighbours:
+                        if d_node not in dead_nodes:
                             dead_nodes.append(d_node)
                             g.remove_edge(g.get_router_by_name(d_node))             ##Removes all edges connected to the failed node in the graph
-                if len(recv_packet.revive) != 0:
-                    for rev in recv_packet.revive:
-                        if rev in dead_nodes:
-                            for r in g.get_router_by_name(rev).neighbours:
-                                g.add_edge(g.get_router_by_name(rev), g.get_router(r), g.get_router_by_name(rev).neighbours[r])
-                            dead_nodes.remove(rev)
+
 
                 for i in list(src_router.neighbours):
                     if org_router.name == i.name:
@@ -240,7 +243,7 @@ def print_path(src_router):
     for j in g.routers:
         if j == b:
             continue
-        if j.name not in b.paths:
+        if j.name not in b.paths or j.name in dead_nodes:
             print("no path " + j.name)
         else:
             print("Least cost path to router " + j.name + ":" + ' '.join(b.paths[j.name]).replace(" ","") + " and the cost is " + str(b.cost[j.name]))
